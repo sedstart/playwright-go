@@ -49,7 +49,7 @@ func (j *jsHandleImpl) EvaluateHandle(expression string, options ...any) (JSHand
 	if channelOwner == nil {
 		return nil, nil
 	}
-	return channelOwner.(*jsHandleImpl), nil
+	return channelOwner.(JSHandle), nil
 }
 
 func (j *jsHandleImpl) GetProperty(name string) (JSHandle, error) {
@@ -59,7 +59,7 @@ func (j *jsHandleImpl) GetProperty(name string) (JSHandle, error) {
 	if err != nil {
 		return nil, err
 	}
-	return fromChannel(channel).(*jsHandleImpl), nil
+	return fromChannel(channel).(JSHandle), nil
 }
 
 func (j *jsHandleImpl) GetProperties() (map[string]JSHandle, error) {
@@ -70,7 +70,7 @@ func (j *jsHandleImpl) GetProperties() (map[string]JSHandle, error) {
 	propertiesMap := make(map[string]JSHandle)
 	for _, property := range properties.([]any) {
 		item := property.(map[string]any)
-		propertiesMap[item["name"].(string)] = fromChannel(item["value"]).(*jsHandleImpl)
+		propertiesMap[item["name"].(string)] = fromChannel(item["value"]).(JSHandle)
 	}
 	return propertiesMap, nil
 }
@@ -176,6 +176,10 @@ func parseValue(result any, refs map[float64]any) any {
 		return out
 	}
 
+	if v, ok := vMap["value"]; ok {
+		return parseValue(v, refs)
+	}
+
 	if v, ok := vMap["e"]; ok {
 		return parseError(Error{
 			Name:    v.(map[string]any)["n"].(string),
@@ -183,6 +187,14 @@ func parseValue(result any, refs map[float64]any) any {
 			Stack:   v.(map[string]any)["s"].(string),
 		})
 	}
+
+	if v, ok := vMap["ariaSnapshot"]; ok {
+		if val, ok := vMap["value"]; ok {
+			return parseValue(val, refs)
+		}
+		return v
+	}
+
 	if v, ok := vMap["ta"]; ok {
 		b, b_ok := v.(map[string]any)["b"].(string)
 		k, k_ok := v.(map[string]any)["k"].(string)

@@ -96,6 +96,7 @@ func TestMouseWheel(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, page.SetContent(`<div style="width: 5000px; height: 5000px;"></div>`))
 
+	require.NoError(t, page.Mouse().Move(50, 60))
 	require.NoError(t, page.Mouse().Wheel(0, 100))
 	time.Sleep(500 * time.Millisecond)
 	h, err := page.WaitForFunction(`window.scrollY === 100`, nil)
@@ -257,7 +258,7 @@ func TestShouldUploadAFolder(t *testing.T) {
 
 	expectResult := []interface{}{"file-upload-test/file1.txt", "file-upload-test/file2"}
 	// https://issues.chromium.org/issues/345393164
-	if !(isChromium && headless && chromiumVersionLessThan(browser.Version(), "127.0.6533.0")) {
+	if !isChromium || !headless || !chromiumVersionLessThan(browser.Version(), "127.0.6533.0") {
 		expectResult = append(expectResult, "file-upload-test/sub-dir/really.txt")
 	}
 	slices.SortFunc(ret.([]interface{}), func(i, j interface{}) int {
@@ -335,4 +336,20 @@ func TestShouldThrowWhenUploadAFolderInANormalFileUploadInput(t *testing.T) {
 	//nolint:staticcheck
 	err = input.SetInputFiles(dir)
 	require.ErrorContains(t, err, "File input does not support directories, pass individual files instead")
+}
+
+func TestSetInputFilesShouldRespectDefaultTimeout(t *testing.T) {
+	BeforeEach(t)
+
+	// Regression test: SetInputFiles must honor Page.SetDefaultTimeout instead of
+	// always sending a hardcoded 30s timeout. The selector never resolves to an
+	// element, so the call waits until the configured timeout elapses.
+	page.SetDefaultTimeout(500)
+	defer page.SetDefaultTimeout(30 * 1000) // reset
+
+	file := filepath.Join(t.TempDir(), "file.txt")
+	require.NoError(t, os.WriteFile(file, []byte("content"), 0o600))
+
+	err := page.Locator("input#does-not-exist").SetInputFiles(file)
+	require.ErrorContains(t, err, "Timeout 500ms exceeded")
 }

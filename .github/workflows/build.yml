@@ -1,22 +1,25 @@
 name: Go
 on:
   push:
-    branches: [ main ]
+    branches: [ main, roll/* ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, roll/* ]
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     - name: Set up Go 1.x
-      uses: actions/setup-go@v5
+      uses: actions/setup-go@v6
       with:
         go-version: oldstable
       id: go
     - name: golangci-lint
-      uses: golangci/golangci-lint-action@v6
+      uses: golangci/golangci-lint-action@v9
       with:
         version: latest
   test:
@@ -28,17 +31,21 @@ jobs:
         go: ['stable', 'oldstable']
     runs-on: ${{ matrix.os }}
     name:  ${{ matrix.browser }} on ${{ matrix.os }}, go ${{ matrix.go }}
+    permissions:
+      # Needed for flakiness.io upload via GitHub OIDC (no access token required).
+      id-token: write
+      contents: read
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
       with:
         submodules: true
     - name: Set up Go
-      uses: actions/setup-go@v5
+      uses: actions/setup-go@v6
       with:
         go-version: ${{ matrix.go }}
       id: go
     - name: Cache drivers
-      uses: actions/cache@v4
+      uses: actions/cache@v6
       with:
         # In order:
         # * Driver for linux
@@ -54,17 +61,22 @@ jobs:
         key: ${{ runner.os }}-go${{ matrix.go }}-${{ matrix.browser }}-${{ hashFiles('**/run.go') }}
     - run: |
         go install ./...
+        go install github.com/mxschmitt/flakiness-go/cmd/flakiness-go@latest
         playwright install --with-deps ${{ matrix.browser }}
     - name: Test
       env:
         BROWSER: ${{ matrix.browser }}
+        FLAKINESS_PROJECT: playwright-community/playwright-go
+        FLAKINESS_NAME: ${{ matrix.browser }}
       if: matrix.os == 'ubuntu-latest'
-      run: xvfb-run go test -timeout 15m -v -coverprofile=covprofile -coverpkg="github.com/playwright-community/playwright-go" --race ./...
+      run: xvfb-run flakiness-go -timeout 15m -v -coverprofile=covprofile -coverpkg="github.com/playwright-community/playwright-go" --race ./...
     - name: Test
       env:
         BROWSER: ${{ matrix.browser }}
+        FLAKINESS_PROJECT: playwright-community/playwright-go
+        FLAKINESS_NAME: ${{ matrix.browser }}
       if: matrix.os != 'ubuntu-latest'
-      run: go test -timeout 15m -v -coverprofile=covprofile -coverpkg="github.com/playwright-community/playwright-go" --race ./...
+      run: flakiness-go -timeout 15m -v -coverprofile=covprofile -coverpkg="github.com/playwright-community/playwright-go" --race ./...
     - name: Send coverage
       uses: shogo82148/actions-goveralls@v1
       if: matrix.go == 'stable'
@@ -84,9 +96,9 @@ jobs:
   test-examples:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     - name: Set up Go 1.x
-      uses: actions/setup-go@v5
+      uses: actions/setup-go@v6
       with:
         go-version: oldstable
       id: go

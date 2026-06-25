@@ -112,9 +112,10 @@ func TestClientCerts(t *testing.T) {
 						KeyPath:  playwright.String(Asset("client-certificates/client/trusted/key.pem")),
 					},
 				},
-			})
+			},
+		)
 		require.NoError(t, err)
-		defer context2.Close()
+		defer context2.Close() //nolint:errcheck
 		page2, err := context2.NewPage()
 		require.NoError(t, err)
 

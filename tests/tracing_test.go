@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -106,7 +107,7 @@ func TestBrowserContextTracingRemoteConnect(t *testing.T) {
 	browser1, err := browserType.Connect(remoteServer.url)
 	require.NoError(t, err)
 	require.NotNil(t, browser1)
-	defer browser1.Close()
+	defer browser1.Close() //nolint:errcheck
 
 	context1, err := browser1.NewContext()
 	require.NoError(t, err)
@@ -222,7 +223,7 @@ func parseTrace(t *testing.T, tracePath string) (files map[string][]byte, events
 	// read and unzip trace
 	r, err := zip.OpenReader(tracePath)
 	require.NoError(t, err)
-	defer r.Close()
+	defer r.Close() //nolint:errcheck
 
 	files = make(map[string][]byte)
 	events = make([]interface{}, 0)
@@ -230,7 +231,7 @@ func parseTrace(t *testing.T, tracePath string) (files map[string][]byte, events
 	for _, f := range r.File {
 		rc, err := f.Open()
 		require.NoError(t, err)
-		defer rc.Close()
+		defer rc.Close() //nolint:errcheck
 
 		buf := new(bytes.Buffer)
 		_, err = io.Copy(buf, rc)
@@ -267,9 +268,7 @@ func parseTrace(t *testing.T, tracePath string) (files map[string][]byte, events
 					actionMap[event["callId"].(string)] = event
 					events = append(events, event)
 				case "input":
-					break
 				case "after":
-					break
 				default:
 					events = append(events, event)
 				}
@@ -306,4 +305,83 @@ func getTraceActions(events []interface{}) []string {
 		}
 	}
 	return actions
+}
+
+// Ported from upstream tests/library/har.spec.ts "tracing.startHar" >
+// "should record a HAR with options".
+func TestTracingStartHarWithOptions(t *testing.T) {
+	BeforeEach(t)
+
+	harPath := filepath.Join(t.TempDir(), "tracing.har")
+	require.NoError(t, context.Tracing().StartHar(harPath, playwright.TracingStartHarOptions{
+		Mode:      playwright.HarModeMinimal,
+		URLFilter: "**/one-style.css",
+	}))
+	_, err := page.Goto(server.PREFIX + "/one-style.html")
+	require.NoError(t, err)
+	require.NoError(t, context.Tracing().StopHar())
+	require.FileExists(t, harPath)
+
+	data, err := os.ReadFile(harPath)
+	require.NoError(t, err)
+	var har struct {
+		Log struct {
+			Entries []struct {
+				Request struct {
+					URL      string  `json:"url"`
+					BodySize float64 `json:"bodySize"`
+				} `json:"request"`
+			} `json:"entries"`
+		} `json:"log"`
+	}
+	require.NoError(t, json.Unmarshal(data, &har))
+	urls := make([]string, 0, len(har.Log.Entries))
+	for _, e := range har.Log.Entries {
+		urls = append(urls, e.Request.URL)
+	}
+	require.Equal(t, []string{server.PREFIX + "/one-style.css"}, urls)
+	// Minimal mode drops body sizes.
+	require.Equal(t, float64(-1), har.Log.Entries[0].Request.BodySize)
+}
+
+// Ported from upstream "should record a zipped HAR for APIRequestContext",
+// adapted to a BrowserContext (the Go API exposes Tracing on both).
+func TestTracingStartHarZipped(t *testing.T) {
+	BeforeEach(t)
+
+	harPath := filepath.Join(t.TempDir(), "tracing.har.zip")
+	require.NoError(t, context.Tracing().StartHar(harPath, playwright.TracingStartHarOptions{
+		Content: playwright.HarContentPolicyAttach,
+	}))
+	_, err := page.Goto(server.PREFIX + "/one-style.html")
+	require.NoError(t, err)
+	require.NoError(t, context.Tracing().StopHar())
+	require.FileExists(t, harPath)
+
+	// The zip contains the har.har entry alongside attached resources.
+	zr, err := zip.OpenReader(harPath)
+	require.NoError(t, err)
+	defer zr.Close() //nolint:errcheck
+	var harEntry *zip.File
+	for _, f := range zr.File {
+		if f.Name == "har.har" {
+			harEntry = f
+			break
+		}
+	}
+	require.NotNil(t, harEntry, "zip should contain har.har")
+	rc, err := harEntry.Open()
+	require.NoError(t, err)
+	defer rc.Close() //nolint:errcheck
+	data, err := io.ReadAll(rc)
+	require.NoError(t, err)
+	require.Contains(t, string(data), server.PREFIX+"/one-style.html")
+}
+
+// StopHar without a prior StartHar should error, mirroring upstream's
+// "HAR recording has not been started" guard.
+func TestTracingStopHarWithoutStart(t *testing.T) {
+	BeforeEach(t)
+
+	require.ErrorContains(t, context.Tracing().StopHar(), "HAR recording has not been started")
 }

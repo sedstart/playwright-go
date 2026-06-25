@@ -486,6 +486,29 @@ func TestLocatorsDragToShouldWork(t *testing.T) {
 	require.True(t, ret.(bool))
 }
 
+func TestLocatorDrop(t *testing.T) {
+	BeforeEach(t)
+
+	require.NoError(t, page.SetContent(`
+		<div id="target" style="width:200px;height:200px;border:1px solid"
+		   ondrop="window.__dropped=event.dataTransfer.getData('text/plain');event.preventDefault()"
+		   ondragover="event.preventDefault()"></div>`))
+
+	// Drop a clipboard-style data payload. The serialized data must be an
+	// array of {mimeType, value} entries for the protocol to accept it.
+	require.NoError(t, page.Locator("#target").Drop(playwright.Payload{
+		Data: map[string]string{"text/plain": "hello-drop"},
+	}))
+	dropped, err := page.Evaluate("() => window.__dropped")
+	require.NoError(t, err)
+	require.Equal(t, "hello-drop", dropped)
+
+	// Drop a file payload, exercising the files -> payloads/localPaths conversion.
+	require.NoError(t, page.Locator("#target").Drop(playwright.Payload{
+		Files: []playwright.InputFile{{Name: "a.txt", MimeType: "text/plain", Buffer: []byte("hi")}},
+	}))
+}
+
 func TestLocatorsShouldUploadFile(t *testing.T) {
 	BeforeEach(t)
 
@@ -511,7 +534,7 @@ func TestLocatorsShouldUploadFileRemote(t *testing.T) {
 	browser1, err := browserType.Connect(remoteServer.url)
 	require.NoError(t, err)
 	require.NotNil(t, browser1)
-	defer browser1.Close()
+	defer browser1.Close() //nolint:errcheck
 
 	browser_context, err := browser1.NewContext()
 	require.NoError(t, err)
@@ -613,7 +636,8 @@ func TestShouldSupportLocatorOr(t *testing.T) {
 	require.NoError(t, expect.Locator(page.Locator("div").Or(page.Locator("span"))).ToHaveCount(2))
 	require.NoError(t, expect.Locator(page.Locator("div").Or(page.Locator("span"))).ToHaveText([]string{"hello", "world"}))
 	require.NoError(t, expect.Locator(
-		page.Locator("span").Or(page.Locator("article")).Or(page.Locator("div"))).ToHaveText([]string{"hello", "world"}))
+		page.Locator("span").Or(page.Locator("article")).Or(page.Locator("div")),
+	).ToHaveText([]string{"hello", "world"}))
 
 	require.NoError(t, expect.Locator(page.Locator("article").Or(page.Locator("something"))).ToHaveCount(0))
 	require.NoError(t, expect.Locator(page.Locator("article").Or(page.Locator("div"))).ToHaveText("hello"))

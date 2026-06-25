@@ -281,6 +281,9 @@ func (f *frameImpl) onFrameNavigated(ev map[string]any) {
 	_, ok := ev["error"]
 	if !ok && f.page != nil {
 		f.page.Emit("framenavigated", f)
+		if f.page.browserContext != nil {
+			f.page.browserContext.Emit("framenavigated", f)
+		}
 	}
 }
 
@@ -292,6 +295,9 @@ func (f *frameImpl) onLoadState(ev map[string]any) {
 		if f.parentFrame == nil && f.page != nil {
 			if add == "load" || add == "domcontentloaded" {
 				f.Page().Emit(add, f.page)
+				if add == "load" && f.page.browserContext != nil {
+					f.page.browserContext.Emit("pageload", f.page)
+				}
 			}
 		}
 	} else if ev["remove"] != nil {
@@ -472,7 +478,17 @@ func (f *frameImpl) SetInputFiles(selector string, files any, options ...FrameSe
 		return err
 	}
 	params.Selector = &selector
-	_, err = f.channel.Send("setInputFiles", params, options)
+	var option FrameSetInputFilesOptions
+	if len(options) == 1 {
+		option = options[0]
+	}
+	// timeout is required in Playwright v1.57+ protocol. Resolve the configured
+	// default (Page/BrowserContext.SetDefaultTimeout) instead of letting the
+	// serializer fall back to a hardcoded 30s, which would ignore that setting.
+	if option.Timeout == nil {
+		option.Timeout = Float(f.page.timeoutSettings.Timeout())
+	}
+	_, err = f.channel.Send("setInputFiles", params, option)
 	return err
 }
 
@@ -534,7 +550,7 @@ func (f *frameImpl) WaitForFunction(expression string, arg any, options ...Frame
 	if handle == nil {
 		return nil, nil
 	}
-	return handle.(*jsHandleImpl), nil
+	return handle.(JSHandle), nil
 }
 
 func (f *frameImpl) Title() (string, error) {

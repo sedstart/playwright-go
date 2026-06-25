@@ -22,7 +22,7 @@ func (c *consoleMessageImpl) Args() []JSHandle {
 	args := c.event["args"].([]any)
 	out := []JSHandle{}
 	for idx := range args {
-		out = append(out, fromChannel(args[idx]).(*jsHandleImpl))
+		out = append(out, fromChannel(args[idx]).(JSHandle))
 	}
 	return out
 }
@@ -53,4 +53,12 @@ func newConsoleMessage(event map[string]any) *consoleMessageImpl {
 		bt.worker = worker.(*workerImpl)
 	}
 	return bt
+}
+
+func (c *consoleMessageImpl) Timestamp() (float64, error) {
+	v, ok := c.event["timestamp"]
+	if !ok {
+		return 0, nil
+	}
+	return v.(float64), nil
 }

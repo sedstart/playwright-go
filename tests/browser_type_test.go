@@ -77,7 +77,7 @@ func TestBrowserTypeConnect(t *testing.T) {
 	browser1, err := browserType.Connect(remoteServer.url)
 	require.NoError(t, err)
 	require.NotNil(t, browser1)
-	defer browser1.Close()
+	defer browser1.Close() //nolint:errcheck
 
 	browser_context, err := browser1.NewContext()
 	require.NoError(t, err)
@@ -99,7 +99,7 @@ func TestBrowserTypeConnectShouldBeAbleToReconnectToBrowser(t *testing.T) {
 	browser1, err := browserType.Connect(remoteServer.url)
 	require.NoError(t, err)
 	require.NotNil(t, browser1)
-	defer browser1.Close()
+	defer browser1.Close() //nolint:errcheck
 
 	require.Len(t, browser1.Contexts(), 0)
 	browser_context, err := browser1.NewContext()
@@ -117,7 +117,7 @@ func TestBrowserTypeConnectShouldBeAbleToReconnectToBrowser(t *testing.T) {
 	browser1, err = browserType.Connect(remoteServer.url)
 	require.NoError(t, err)
 	require.NotNil(t, browser1)
-	defer browser1.Close()
+	defer browser1.Close() //nolint:errcheck
 
 	require.Len(t, browser1.Contexts(), 0)
 	browser_context, err = browser1.NewContext()
@@ -178,7 +178,7 @@ func TestBrowserTypeConnectSlowMo(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NotNil(t, browser1)
-	defer browser1.Close()
+	defer browser1.Close() //nolint:errcheck
 
 	browser_context, err := browser1.NewContext()
 	require.NoError(t, err)
@@ -202,20 +202,20 @@ func TestBrowserTypeConnectArtifactPath(t *testing.T) {
 	browser1, err := browserType.Connect(remoteServer.url)
 	require.NoError(t, err)
 	require.NotNil(t, browser1)
-	defer browser1.Close()
+	defer browser1.Close() //nolint:errcheck
 
 	recordVideoDir := t.TempDir()
 	browserContext, err := browser1.NewContext(playwright.BrowserNewContextOptions{
 		RecordVideo: &playwright.RecordVideo{
-			Dir: recordVideoDir,
+			Dir: playwright.String(recordVideoDir),
 		},
 	})
 	require.NoError(t, err)
 	require.NotNil(t, browserContext)
-	defer browserContext.Close()
+	defer browserContext.Close() //nolint:errcheck
 	page, err := browserContext.NewPage()
 	require.NoError(t, err)
-	defer page.Close()
+	defer page.Close() //nolint:errcheck
 	_, err = page.Goto(server.EMPTY_PAGE)
 	require.NoError(t, err)
 	_, err = page.Video().Path()
@@ -235,11 +235,11 @@ func TestBrowserTypeConnectOverCDP(t *testing.T) {
 		Args: []string{fmt.Sprintf("--remote-debugging-port=%d", port)},
 	})
 	require.NoError(t, err)
-	defer browserServer.Close()
+	defer browserServer.Close() //nolint:errcheck
 	browser, err := browserType.ConnectOverCDP(fmt.Sprintf("http://localhost:%d", port))
 	require.NoError(t, err)
 	require.NotNil(t, browser)
-	defer browser.Close()
+	defer browser.Close() //nolint:errcheck
 	require.Len(t, browser.Contexts(), 1)
 }
 
@@ -255,15 +255,15 @@ func TestBrowserTypeConnectOverCDPTwice(t *testing.T) {
 		Args: []string{fmt.Sprintf("--remote-debugging-port=%d", port)},
 	})
 	require.NoError(t, err)
-	defer browserServer.Close()
+	defer browserServer.Close() //nolint:errcheck
 	browser1, err := browserType.ConnectOverCDP(fmt.Sprintf("http://localhost:%d", port))
 	require.NoError(t, err)
 	require.NotNil(t, browser1)
 	browser2, err := browserType.ConnectOverCDP(fmt.Sprintf("http://localhost:%d", port))
 	require.NoError(t, err)
 	require.NotNil(t, browser2)
-	defer browser1.Close()
-	defer browser2.Close()
+	defer browser1.Close() //nolint:errcheck
+	defer browser2.Close() //nolint:errcheck
 	require.Len(t, browser1.Contexts(), 1)
 	page1, err := browser1.Contexts()[0].NewPage()
 	require.NoError(t, err)
@@ -289,7 +289,7 @@ func TestSetInputFilesShouldPreserveLastModifiedTimestamp(t *testing.T) {
 	browser1, err := browserType.Connect(remoteServer.url)
 	require.NoError(t, err)
 	require.NotNil(t, browser1)
-	defer browser1.Close()
+	defer browser1.Close() //nolint:errcheck
 
 	browser_context, err := browser1.NewContext()
 	require.NoError(t, err)
@@ -337,12 +337,13 @@ func TestShouldUploadAFolderRemote(t *testing.T) {
 	browser1, err := browserType.Connect(remoteServer.url)
 	require.NoError(t, err)
 	require.NotNil(t, browser1)
-	defer browser1.Close()
+	defer browser1.Close() //nolint:errcheck
 
 	browser_context, err := browser1.NewContext()
 	require.NoError(t, err)
 	page, err := browser_context.NewPage()
 	require.NoError(t, err)
+	page.SetDefaultTimeout(60 * 1000)
 
 	_, err = page.Goto(fmt.Sprintf("%s%s", server.PREFIX, "/input/folderupload.html"))
 	require.NoError(t, err)
@@ -365,7 +366,7 @@ func TestShouldUploadAFolderRemote(t *testing.T) {
 
 	expectResult := []interface{}{"file-upload-test/file1.txt", "file-upload-test/file2"}
 	// https://issues.chromium.org/issues/345393164
-	if !(isChromium && headless && chromiumVersionLessThan(browser.Version(), "127.0.6533.0")) {
+	if !isChromium || !headless || !chromiumVersionLessThan(browser.Version(), "127.0.6533.0") {
 		expectResult = append(expectResult, "file-upload-test/sub-dir/really.txt")
 	}
 	slices.SortFunc(ret.([]interface{}), func(i, j interface{}) int {
@@ -387,4 +388,30 @@ func TestShouldUploadAFolderRemote(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, string(b), content.(string))
 	}
+}
+
+func TestBrowserBind(t *testing.T) {
+	BeforeEach(t)
+
+	result, err := browser.Bind("test-server")
+	require.NoError(t, err)
+	require.NotEmpty(t, result.Endpoint)
+
+	// Connect from another Playwright instance
+	pw2, err := playwright.Run()
+	require.NoError(t, err)
+	defer func() { _ = pw2.Stop() }()
+
+	browser2, err := pw2.Chromium.Connect(result.Endpoint)
+	require.NoError(t, err)
+	require.NotNil(t, browser2)
+
+	page2, err := browser2.NewPage()
+	require.NoError(t, err)
+	_, err = page2.Goto(server.EMPTY_PAGE)
+	require.NoError(t, err)
+	require.Equal(t, server.EMPTY_PAGE, page2.URL())
+
+	require.NoError(t, browser2.Close())
+	require.NoError(t, browser.Unbind())
 }
